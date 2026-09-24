@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Star Blaster</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#e6ecf4;--ink:#12233a;--muted:#4c6078;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0a1320;--ink:#e7eef8;--muted:#8fa3bd}}
+:root[data-theme="dark"]{--bg:#0a1320;--ink:#e7eef8;--muted:#8fa3bd}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:"Bricolage Grotesque",system-ui,-apple-system,"Segoe UI",sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:12px}
+.hud{width:100%;max-width:400px;display:flex;justify-content:space-between;font-weight:600;font-size:.95rem}
+.hud b{font-weight:800;font-size:1.35rem;margin-left:.3em}
+.hud span{color:var(--muted)}.hud b{color:var(--ink)}
+.wrap{position:relative;width:100%;max-width:400px}
+canvas{display:block;width:100%;height:auto;aspect-ratio:9/14;border-radius:14px;touch-action:none;background:#12233a;cursor:crosshair}
+.ov{position:absolute;inset:0;border-radius:14px;background:rgba(10,19,32,.8);color:#e7eef8;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;text-align:center;padding:24px}
+.ov[hidden]{display:none}
+.ov h1{margin:0;font-size:2.6rem;font-weight:800;letter-spacing:-.02em}
+.ov p{margin:0;max-width:26ch;line-height:1.4;color:#b9c8dc}
+button{font:inherit;font-weight:800;font-size:1.1rem;padding:.7em 1.8em;border:0;border-radius:999px;background:#ffd36b;color:#12233a;cursor:pointer}
+button:focus-visible{outline:3px solid #fff;outline-offset:3px}
+</style>
+</head>
+<body>
+<div class="hud"><span>Score<b id="s">0</b></span><span>Best<b id="b">0</b></span><span>Wave<b id="w">1</b></span><span>Lives<b id="l">3</b></span></div>
+<div class="wrap">
+<canvas id="c" aria-label="Star Blaster game"></canvas>
+<div class="ov" id="ov">
+<h1 id="t">Star Blaster</h1>
+<p id="m">Drag to move and hold to shoot. On a keyboard, use the arrow keys and Space.</p>
+<button id="go">Play</button>
+</div>
+</div>
+<script>
+const cv=document.getElementById('c'),cx=cv.getContext('2d'),W=360,H=560,$=id=>document.getElementById(id);
+const dpr=Math.min(window.devicePixelRatio||1,2);cv.width=W*dpr;cv.height=H*dpr;cx.scale(dpr,dpr);
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),rnd=Math.random;
+let ship,pb,en,eb,score,lives,wave,kills,t,fireT,spawnT,inv,running=false,best=0,hold=false,keys={l:0,r:0,f:0};
+try{best=+localStorage.getItem('starblaster-best')||0}catch(e){}
+const stars=Array.from({length:45},()=>({x:rnd()*W,y:rnd()*H,s:rnd()*1.6+.6}));
+function hud(){$('s').textContent=score;$('b').textContent=best;$('w').textContent=wave;$('l').textContent=lives}
+function reset(){ship={x:W/2,y:H-64,tx:W/2};pb=[];en=[];eb=[];score=0;lives=3;wave=1;kills=0;t=0;fireT=0;spawnT=.6;inv=0;hud()}
+function end(){running=false;hold=false;if(score>best){best=score;try{localStorage.setItem('starblaster-best',best)}catch(e){}}hud();
+$('t').textContent='Game over';$('m').textContent='You reached wave '+wave+' with '+score+' points. Best is '+best+'.';$('go').textContent='Play again';$('ov').hidden=false}
+function spawn(){const tank=wave>1&&rnd()<.25,r=tank?20:13;
+en.push({x:0,sx:r+20+rnd()*(W-2*r-40),y:-r,r,tank,hp:tank?3:1,vy:tank?34:50+wave*5,ph:rnd()*6,amp:20+rnd()*40,st:1+rnd()*1.5,fl:0})}
+function update(dt){t+=dt;
+ship.x+=(ship.tx-ship.x)*Math.min(1,dt*14);
+if(keys.l)ship.tx-=340*dt;if(keys.r)ship.tx+=340*dt;ship.tx=clamp(ship.tx,18,W-18);
+fireT-=dt;if((hold||keys.f)&&fireT<=0){fireT=.17;pb.push({x:ship.x-7,y:ship.y-10},{x:ship.x+7,y:ship.y-10})}
+spawnT-=dt;if(spawnT<=0){spawn();spawnT=Math.max(.45,1.5-wave*.1)}
+for(const b of pb)b.y-=560*dt;
+for(const e of en){e.y+=e.vy*dt;e.x=clamp(e.sx+Math.sin(t*1.5+e.ph)*e.amp,e.r,W-e.r);e.fl-=dt;e.st-=dt;
+if(e.st<=0&&e.y>0&&e.y<H-200){e.st=(e.tank?1.4:2.8)-Math.min(wave*.1,.9)+rnd()*.8;
+const dx=ship.x-e.x,dy=ship.y-e.y,d=Math.hypot(dx,dy)||1,sp=150+wave*8;eb.push({x:e.x,y:e.y+e.r,vx:dx/d*sp,vy:dy/d*sp})}}
+for(const b of eb){b.x+=b.vx*dt;b.y+=b.vy*dt}
+for(const b of pb)for(const e of en){if(!b.dead&&e.hp>0&&Math.abs(b.x-e.x)<e.r+2&&Math.abs(b.y-e.y)<e.r+6){b.dead=1;e.hp--;e.fl=.08;
+if(e.hp<=0){score+=e.tank?30:10;kills++;if(kills%10===0)wave++}}}
+inv-=dt;
+if(inv<=0){for(const b of eb)if(Math.hypot(b.x-ship.x,b.y-ship.y)<12){b.dead=1;hit();break}
+for(const e of en)if(e.hp>0&&Math.hypot(e.x-ship.x,e.y-ship.y)<e.r+10){e.hp=0;hit();break}}
+pb=pb.filter(b=>!b.dead&&b.y>-12);eb=eb.filter(b=>!b.dead&&b.y<H+10&&b.x>-10&&b.x<W+10&&b.y>-10);en=en.filter(e=>e.hp>0&&e.y<H+40);hud()}
+function hit(){lives--;inv=1.6;if(lives<=0)end()}
+function draw(){
+cx.fillStyle='#12233a';cx.fillRect(0,0,W,H);
+cx.fillStyle='#7f96b5';for(const s of stars){s.y+=s.s*.5;if(s.y>H)s.y=0;cx.fillRect(s.x,s.y,s.s,s.s)}
+if(!ship)return;
+cx.fillStyle='#9ff3d0';for(const b of pb)cx.fillRect(b.x-1.5,b.y-8,3,12);
+cx.fillStyle='#ff6b5b';for(const b of eb){cx.beginPath();cx.arc(b.x,b.y,4,0,7);cx.fill()}
+for(const e of en){cx.save();cx.translate(e.x,e.y);cx.beginPath();cx.moveTo(0,e.r);cx.lineTo(e.r,-e.r*.7);cx.lineTo(0,-e.r*.3);cx.lineTo(-e.r,-e.r*.7);cx.closePath();
+cx.fillStyle=e.fl>0?'#fff':e.tank?'#b8455c':'#e5806f';cx.fill();cx.restore()}
+if(inv<=0||Math.floor(inv*10)%2){cx.save();cx.translate(ship.x,ship.y);cx.beginPath();cx.moveTo(0,-18);cx.lineTo(14,14);cx.lineTo(0,8);cx.lineTo(-14,14);cx.closePath();cx.fillStyle='#ffd36b';cx.fill();cx.restore()}}
+let last=0;
+function loop(ts){const dt=Math.min((ts-last)/1000,.05);last=ts;if(running)update(dt);draw();requestAnimationFrame(loop)}
+function move(e){if(!running)return;const r=cv.getBoundingClientRect();ship.tx=clamp((e.clientX-r.left)/r.width*W,18,W-18)}
+cv.addEventListener('pointermove',move);
+cv.addEventListener('pointerdown',e=>{move(e);hold=true;try{cv.setPointerCapture(e.pointerId)}catch(x){}});
+['pointerup','pointercancel'].forEach(n=>cv.addEventListener(n,()=>hold=false));
+addEventListener('keydown',e=>{if(e.key==='ArrowLeft'||e.key==='a')keys.l=1;if(e.key==='ArrowRight'||e.key==='d')keys.r=1;if(e.key===' '&&running)keys.f=1;if(running&&(e.key.startsWith('Arrow')||e.key===' '))e.preventDefault()});
+addEventListener('keyup',e=>{if(e.key==='ArrowLeft'||e.key==='a')keys.l=0;if(e.key==='ArrowRight'||e.key==='d')keys.r=0;if(e.key===' ')keys.f=0});
+$('go').addEventListener('click',()=>{reset();$('ov').hidden=true;running=true;$('go').blur()});
+hud();requestAnimationFrame(loop);
+</script>
+</body>
+</html>
